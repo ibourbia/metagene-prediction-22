@@ -6,7 +6,6 @@ library(psych)
 library(Hmisc)
 library(caret)
 library(ggfortify)
-library(ggplot2)
 library(miceadds)
 library(finalfit)
 library(broom)
@@ -291,6 +290,7 @@ confint(model)
 exp(coef(model))
 
 chemo_hatzis<- pheno_chemo[ (pheno_chemo$Data_Set_Name == "Hatzis_val" | pheno_chemo$Data_Set_Name == "Hatzis_disc") & pheno_chemo$ER == 1 & pheno_chemo$HER2 == 0 & !is.na(pheno_chemo$pCR),]
+chemo_hatzis <- chemo_hatzis[!is.na(chemo_hatzis$pCR),]
 exp_mat_hatzis_prolif<- data.frame(t(exp_mat_chemo[c(metagene_proliferation[[1]]),which(names(exp_mat_chemo) %in% rownames(chemo_hatzis))]))
 exp_mat_hatzis_prolif <- highlow(exp_mat_hatzis_prolif)
 chemo_hatzis$tertilesPRO <- exp_mat_hatzis_prolif$tertiles
@@ -308,7 +308,9 @@ chemo_hatzis <- chemo_hatzis %>%
     tertilesER==0 & tertilesPRO==1 ~'High'
   )
 )
-chemo_petel  <- pheno_chemo[ pheno_chemo$Data_Set_Name == "Petel" & pheno_chemo$ER == 1 & pheno_chemo$HER2 == 0 ,]
+
+chemo_petel  <- pheno_chemo[pheno_chemo$Data_Set_Name == "Petel" & pheno_chemo$ER == 1 & pheno_chemo$HER2 == 0 ,]
+chemo_petel <- chemo_petel[!is.na(chemo_petel$StudyType),]
 exp_mat_petel_prolif<- data.frame(t(exp_mat_chemo[c(metagene_proliferation[[1]]),which(names(exp_mat_chemo) %in% rownames(chemo_petel))]))
 exp_mat_petel_prolif <- highlow(exp_mat_petel_prolif)
 chemo_petel$tertilesPRO <- exp_mat_petel_prolif$tertiles
@@ -326,8 +328,6 @@ chemo_petel <- chemo_petel %>%
     tertilesER==0 & tertilesPRO==1 ~'High'
   )
   )
-
-
 
 
 chemo_hatzis$tertiles <- factor(chemo_hatzis$tertiles)

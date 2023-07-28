@@ -81,6 +81,7 @@ proliferation$time[proliferation$t.dmfs.norm.years >=5] <- 5
 proliferation <- proliferation%>% 
   mutate(time = coalesce(time,t.dmfs.norm.years))
 
+
 pheno_prog$event[pheno_prog$t.dmfs.norm.years >=5] <- 0
 pheno_prog$event[pheno_prog$t.dmfs.norm.years <5] <- 1
 pheno_prog$time[pheno_prog$t.dmfs.norm.years >=5] <- 5
@@ -95,8 +96,8 @@ pheno_tam<- pheno_tam%>%
   mutate(time = coalesce(time,t.dmfs.norm.years))
 
 
-pheno_chemo$ER <- expr_means_chemo$ER_status
-pheno_chemo$HER2 <- expr_means_chemo$HER2_status
+pheno_chemo$ER <- erherstatus_chemo$ER_status
+pheno_chemo$HER2 <-erherstatus_chemo$HER2_status
 
 pheno_chemo$event[pheno_chemo$t.dmfs.norm.years >=5] <- 0
 pheno_chemo$time[pheno_chemo$t.dmfs.norm.years >=5] <- 5
