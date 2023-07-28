@@ -40,32 +40,32 @@ distances_conf <- as.dist(1-abs(correlation_conf))
 #In case of memory issues
 #save(correlations,file="data\\correlation.RData")
 #save(correlation_conf,file="data\\correlation_conf.RData")
-
-# Hierarchical clustering
+#Attempt to ease the sourcing
+remove(correlations,correlation_conf)
+gc()
+# Hierarchical clustering discovery
 hc <- hclust(distances,method="average")
 #Cluster cutting at tree height = 0.6 and minimal cluster size of 25 (according to paper)
 cluster_labels <- cutree(hc,h=0.6)
 cut <- data.frame(cluster_labels)
-cutted_clusters <- unique(cut[unsplit(table(cut$cluster_labels), cut$cluster_labels) >=25, ])
 
 #Keeping only clusters with a specific size
 clusters_discovery <- data.frame(cluster_sizing(hc))
 colnames(clusters_discovery)<- c("cluster_labels")
-
+clusters_discovery$gene<-rownames(clusters_discovery)
 
 #Hierarchical clustering in confirmation set
 hc_conf <- hclust(distances_conf,method="average")
 cluster_labels_conf <- cutree(hc_conf,h=0.6)
 cut_conf <- data.frame(cluster_labels_conf)
-cutted_clusters_conf <- unique(cut_conf[unsplit(table(cut_conf$cluster_labels_conf), cut_conf$cluster_labels_conf) >=20,])
 
-clusters_conf <-data.frame(cluster_sizing(hc_conf,size=20))
+#Sizing
+clusters_conf <-data.frame(cluster_sizing(hc_conf))
 colnames(clusters_conf)<- c("cluster_labels")
+clusters_conf$gene<-rownames(clusters_conf)
 
-#Cluster matching 
-#matching_clusters <- match(cluster_labels_conf,cluster_labels)
-#matching_clusters <- match(clusters_conf,clusters_discovery)
-#matching_clusters <- intersect(clusters_discovery,clusters_conf)
+#Cluster matching between discovery and confirmation sets
+
 cluster_map <- {}
 for (i in 1:nrow(clusters_discovery)) {
   cluster <- clusters_discovery$cluster_labels[i]
@@ -75,9 +75,10 @@ for (i in 1:nrow(clusters_discovery)) {
     cluster_map[cluster] <- NA
   }
 }
+
 cluster_map<- cluster_map[!is.na(cluster_map)]
 confirmed_clusters<- cut %>% filter(cluster_labels %in% cluster_map)%>% as.data.frame()
-
+confirmed_clusters$gene <- rownames(confirmed_clusters)
 ####################t#############################################
 # Identification of clusters enriched in proliferation and      #
 # ER-related genes                                              #
@@ -91,26 +92,26 @@ confirmed_clusters<- cut %>% filter(cluster_labels %in% cluster_map)%>% as.data.
 if(!("ESR1"%in% row.names(confirmed_clusters))){
   stop("ER-related cluster does not seem to exist") #worth stopping the sourcing to inspect
 }else{
-ER_metagene_cluster<- confirmed_clusters %>% filter(cluster_labels==confirmed_clusters["ESR1",])%>%
-  rownames()%>%
-  as.list()
+ER_cluster<- confirmed_clusters %>% filter(cluster_labels==confirmed_clusters["ESR1",]$cluster_labels)
 }
 
-gene_list <- confirmed_clusters%>% rownames()%>%as.list()
-
-for(i in unique(confirmed_clusters$cluster_labels_conf)){
-  metagenes <- confirmed_clusters%>%
-    filter(cluster_labels_conf==i)%>%
-    rownames()%>%
-    as.vector()
-  print(metagenes)
-  enriched_gene_sets <- enrichr( metagenes,
-                                databases = c("GO_BP", "GO_MF", "KEGG"))
-
-}
-
-genes_discovery <- arrange(filter(cut, cluster_labels %in% cutted_clusters),desc(cluster_labels))
-genes_conf <- arrange(filter(cut_conf, cluster_labels_conf %in% cutted_clusters_conf),desc(cluster_labels_conf))
+# gene_list <- confirmed_clusters%>% rownames()%>%as.list()
+# 
+# for(i in unique(confirmed_clusters$cluster_labels)){
+#   metagenes <- confirmed_clusters%>%
+#     filter(cluster_labels==i)%>%
+#     rownames()%>%
+#     as.vector()
+#   write.table(metagenes,paste("data\\cluster_",i,".txt",sep=""),row.names=FALSE,sep="\t", quote = FALSE)
+#   print(metagenes)
+#   enriched_gene_sets <- enrichr( metagenes,
+#                                 databases = c("GO_BP", "GO_MF", "KEGG"))
+# }
+# EnrichR does not find anything -> manual check up. Cluster 29 is proliferation
+# Associated with MYC 
+proliferation_cluster <- confirmed_clusters %>% filter(cluster_labels==29)
+#genes_discovery <- arrange(filter(cut, cluster_labels %in% cutted_clusters),desc(cluster_labels))
+#genes_conf <- arrange(filter(cut_conf, cluster_labels_conf %in% cutted_clusters_conf),desc(cluster_labels_conf))
 rows_29 <- filter(genes_conf,cluster_labels_conf == 29) #Proliferation cluster
 rows_29 <- cbind(rownames(rows_29))
 rows_72 <- filter(genes_conf,cluster_labels_conf == 72) #ER_related cluster
@@ -123,17 +124,20 @@ write.csv(rows_29,"data\\cluster29.csv")
 write.csv(pheno_prog,"data\\pheno_prog.csv")
 write.csv(exp_mat_29,"data\\exp_mat29.csv")
 
-sames <- genes_conf[which(rownames(genes_conf) %in% rownames(genes_discovery)),]
+
+########################################
+# Cross validation                     #
+########################################
+
 #take 90 % of samples, check how good genes predict the outcome, and take top 10
 #Supplementary data no 6c
 cross_validation<-setNames(data.frame(matrix(ncol = 4, nrow = 100)), c("Repeat","pvalues","Metagene_size","Genes"))
-exp_mat_29 <- exp_mat_prog[rows_29, which(names(exp_mat_prog) %in% rownames(proliferation))]
+exp_mat_proliferation <- exp_mat_prog[proliferation_cluster$gene, which(names(exp_mat_prog) %in% rownames(proliferation))]
 
-
-
-for (r in seq(1,10)){
-  training_set <- exp_mat_29[,sample(ncol(exp_mat_29), ncol(exp_mat_29)*0.9)]
-  test_set<- exp_mat_29[rows_29, -which(names(exp_mat_29) %in% names(training_set))]
+for (r in seq(1,100)){
+  #Training set and test set
+  training_set <- exp_mat_proliferation[,sample(ncol(exp_mat_proliferation), ncol(exp_mat_proliferation)*0.9)]
+  test_set<- exp_mat_proliferation[proliferation_cluster$gene, -which(names(exp_mat_proliferation) %in% names(training_set))]
   test_set <- data.frame(t(test_set))
   
   test_set <- merge(test_set,pheno_prog[,c("t.dmfs.norm.years","event","time")],by=0)
@@ -150,15 +154,17 @@ for (r in seq(1,10)){
   #training_set <- data.frame(t(training_set))
 #training_set1 <- merge(training_set,pheno_prog[,c("t.dmfs.norm.years","event","time")],by=0)
 
-p_values <- data.frame(row.names=rows_29)
-p_values$pvalue <- NA
-for(gene in rows_29){
+  #Cox model fitting
+  p_values <- data.frame(row.names=proliferation_cluster$gene)
+  p_values$pvalue <- NA
+  for(gene in proliferation_cluster$gene){
   cox <- coxph(Surv(training_set1$time,training_set1$event)~training_set1[,gene])
-  p_values[gene,]<- summary(cox)$sctest[3]#summary(cox)$coefficients[, 5]
+  p_values[gene,]<- summary(cox)$sctest[3]
+  #summary(cox)$coefficients[, 5]
 }
 
 p_values <- p_values %>% arrange(desc(pvalue))
-sizes <-seq(10,282,by=17)
+sizes <-round(seq(10,length(proliferation_cluster$gene),length.out=17))
 p_values_sizes <- data.frame(matrix(ncol = 2, nrow = 0))
 colnames(p_values_sizes) <- c("size","pvalue")
 
@@ -185,11 +191,12 @@ cross_validation[r,]<- row
 #DMFS % = proportion that survived in each tertile
 
 
-#metagene_proliferation <- strsplit(cross_validation[which.min(cross_validation$pvalues),]$Genes,split=", ")
-exp_mat_29 <- data.frame(t(exp_mat_29))
-exp_mat_29 <- merge(exp_mat_29,proliferation[,c("t.dmfs.norm.years","event","time")],by=0)
+metagene_proliferation <- strsplit(cross_validation[which.min(cross_validation$pvalues),]$Genes,split=", ")
+exp_mat_proliferation <- data.frame(t(exp_mat_proliferation))
+exp_mat_proliferation <- merge(exp_mat_proliferation,proliferation[,c("t.dmfs.norm.years","event","time")],by=0)
 
-table10 <- as.data.frame(exp_mat_29[,c(metagene_proliferation[[1]],"t.dmfs.norm.years","event","time")])
+
+table10 <- as.data.frame(exp_mat_proliferation[,c(metagene_proliferation[[1]],"t.dmfs.norm.years","event","time")])
 table10$mean <- table10%>% rowMeans()
 tert <- quantile(table10$mean, c(0:3/3))
 table10$tertiles <- with(table10, cut(mean, tert, include.lowest = T, labels = c(0, 1, 2)))
@@ -216,8 +223,8 @@ exp_mat_midhigh <- exp_mat_tam[,midhigh_proliferation_tam]
 
 cross_validation_tam<-setNames(data.frame(matrix(ncol = 4, nrow = 100)), c("Repeat","pvalues","Metagene_size","Genes"))
 for (r in seq(1,100)){
-  training_set <- exp_mat_midhigh[rows_72,sample(ncol(exp_mat_midhigh), ncol(exp_mat_midhigh)*0.9)]
-  test_set<- exp_mat_midhigh[rows_72, -which(names(exp_mat_midhigh) %in% names(training_set))]
+  training_set <- exp_mat_midhigh[ER_cluster$gene,sample(ncol(exp_mat_midhigh), ncol(exp_mat_midhigh)*0.9)]
+  test_set<- exp_mat_midhigh[ER_cluster$gene, -which(names(exp_mat_midhigh) %in% names(training_set))]
   test_set <- data.frame(t(test_set))
   
   test_set <- merge(test_set,pheno_tam[,c("t.dmfs.norm.years","event","time")],by=0)
@@ -227,17 +234,15 @@ for (r in seq(1,100)){
   training_set1 <- merge(training_set,pheno_tam[,c("t.dmfs.norm.years","event","time")],by=0)
   
   
-  
-  
-  p_values <- data.frame(row.names=rows_72)
+  p_values <- data.frame(row.names=ER_cluster$gene)
   p_values$pvalue <- NA
-  for(gene in rows_72){
+  for(gene in ER_cluster$gene){
     cox <- coxph(Surv(training_set1$time,training_set1$event)~training_set1[,gene])
     p_values[gene,]<- summary(cox)$sctest[3]#summary(cox)$coefficients[, 5]
   }
   
   p_values <- p_values %>% arrange(desc(pvalue))
-  sizes <-seq(10,95,by=5)
+  sizes <-round(seq(10,length(ER_cluster$gene),length.out=17))
   p_values_sizes <- data.frame(matrix(ncol = 2, nrow = 0))
   colnames(p_values_sizes) <- c("size","pvalue")
   
